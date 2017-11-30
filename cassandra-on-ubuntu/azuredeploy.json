@@ -2,7 +2,7 @@
   "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "appPassword": {
+    "adminPassword": {
       "type": "securestring",
       "minLength": 12,
       "maxLength": 32,
@@ -53,30 +53,13 @@
         "description": "Stack ID - it is the Application Stack identifier."
       }
     },
-    "authenticationType": {
+    "adminUsername": {
       "type": "string",
-      "defaultValue": "password",
-      "metadata": {
-        "description": "Authentication type"
-      }
-    },
-    "adminPassword": {
-      "type": "securestring",
-      "defaultValue": "",
-      "metadata": {
-        "description": "OS Admin password"
-      }
-    },
-    "sshKey": {
-      "type": "string",
-      "defaultValue": "",
-      "metadata": {
-        "description": "SSH rsa public key file as a string."
-      }
+      "defaultValue": "cassandraadmin"
     },
     "vmSize": {
       "type": "string",
-      "defaultValue": "Standard_D1_v2",
+      "defaultValue": "Standard_D2s_v3",
       "metadata": {
         "description": "Size of the VM"
       }
@@ -148,33 +131,12 @@
     "appId": "cassandra",
     "appVersion": "3.11.1-2",
     "newStorageAccountName": "[concat(uniquestring(resourceGroup().id), 'storage')]",
-    "resourceAPIVersion": "2015-06-15",
-    "networkResourcesAPIVersion": "2016-09-01",
-    "vmResourcesAPIVersion": "2016-03-30",
+    "diagStorageAccountName": "[concat(uniquestring(resourceGroup().id), 'diag')]",
     "storageAPIVersion": "2017-06-01",
     "publicIPAddressName": "[concat(parameters('stackId'), 'ip')]",
     "dnsPrefix": "[concat(parameters('stackId'),uniquestring(resourceGroup().id))]",
-    "appPassword": "[parameters('appPassword')]",
     "appDatabase": "unsupported",
     "clusterName": "[parameters('clusterName')]",
-    "linuxConfigurationChosen": "[concat('linuxConfiguration', parameters('authenticationType'))]",
-    "linuxConfigurationsshPublicKey": {
-      "disablePasswordAuthentication": true,
-      "ssh": {
-        "publicKeys": [
-          {
-            "path": "/home/bitnami/.ssh/authorized_keys",
-            "keyData": "[parameters('sshKey')]"
-          }
-        ]
-      }
-    },
-    "linuxConfigurationpassword": {
-      "disablePasswordAuthentication": false
-    },
-    "adminPasswordChosen": "[concat('adminPassword', parameters('authenticationType'))]",
-    "adminPasswordsshPublicKey": "",
-    "adminPasswordpassword": "[parameters('adminPassword')]",
     "availabilitySetName": "[concat(parameters('stackId'), 'set')]",
     "peerAddressIndex": 0,
     "machineCount": "[parameters('nodeCount')]",
@@ -182,7 +144,7 @@
   },
   "resources": [
     {
-      "apiVersion": "2016-01-01",
+      "apiVersion": "2017-06-01",
       "location": "[parameters('location')]",
       "type": "Microsoft.Storage/storageAccounts",
       "name": "[variables('newStorageAccountName')]",
@@ -190,7 +152,18 @@
         "name": "Premium_LRS"
       },
       "kind": "Storage",
-      "properties": null
+      "properties":{}
+    },
+    {
+      "apiVersion": "2017-06-01",
+      "location": "[parameters('location')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[variables('diagStorageAccountName')]",
+      "sku":{
+        "name": "Standard_LRS"
+      },
+      "kind": "Storage",
+      "properties": {}
     },
     {
       "apiVersion": "2016-09-01",
@@ -198,7 +171,6 @@
       "type": "Microsoft.Network/virtualNetworks",
       "name": "network",
       "dependsOn": [
-        "Microsoft.Network/networkSecurityGroups/network"
       ],
       "properties": {
         "addressSpace": {
@@ -314,10 +286,9 @@
         },
         "osProfile": {
           "computerName": "[concat(parameters('stackId'), copyIndex())]",
-          "adminUsername": "bitnami",
-          "adminPassword": "[variables(variables('adminPasswordChosen'))]",
-          "customData": "[base64(parameters('customData'))]",
-          "linuxConfiguration": "[variables(variables('linuxConfigurationChosen'))]"
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "customData": "[base64(parameters('customData'))]"
         },
         "storageProfile": {
           "imageReference": {
@@ -356,7 +327,7 @@
         "diagnosticsProfile": {
           "bootDiagnostics": {
             "enabled": true,
-            "storageUri": "[reference(variables('newStorageAccountName'), variables('storageAPIVersion')).primaryEndpoints.blob]"
+            "storageUri": "[reference(variables('diagStorageAccountName'), variables('storageAPIVersion')).primaryEndpoints.blob]"
           }
         },
         "availabilitySet": {
@@ -390,14 +361,14 @@
           ]
         },
         "protectedSettings": {
-          "commandToExecute": "[concat('sh ./provisioner-first-boot.sh \"', parameters('baseUrl'), '\" \"', parameters('bundleTgzCustomUri'), '\" \"', variables('appId'), '-', variables('appVersion'), '\" --cloud-name azure --app-password \"', variables('appPassword'), '\" --app-database \"', variables('appDatabase'), '\" --peer-nodes-count \"', variables('machineCount'), '\" --peer-nodes-index \"', copyIndex(), '\" --peer-nodes-prefix \"', parameters('stackId'), '\" --cluster-name \"', variables('clusterName'), '\" --password-seeder \"', if(equals(copyIndex(), 0), 'yes', 'no'), '\" --snitch \"', '\"GossipingPropertyFileSnitch\"', '\" --peer-password-input \"', uniqueString(subscription().subscriptionId, ' ', resourceGroup().id, ' ', deployment().name, parameters('stackId'), variables('appId'), variables('appVersion'), variables('appPassword')), '\" --shared-unique-id-input \"', uniqueString(subscription().subscriptionId, ' ', resourceGroup().id, ' ', deployment().name, parameters('stackId'), variables('appId'), variables('appVersion'), variables('appPassword')), '\" --cloud-account-id \"', uniqueString(subscription().subscriptionId), '\" --peer-address \"', reference(concat(parameters('stackId'), variables('peerAddressIndex'), 'nic')).ipConfigurations[0].properties.privateIPAddress, '\" --instance-tier-map \"', variables('machineTierMap'), copyIndex(), '\"')]"
+          "commandToExecute": "[concat('sh ./provisioner-first-boot.sh \"', parameters('baseUrl'), '\" \"', parameters('bundleTgzCustomUri'), '\" \"', variables('appId'), '-', variables('appVersion'), '\" --cloud-name azure --app-password \"', parameters('adminPassword'), '\" --app-database \"', variables('appDatabase'), '\" --peer-nodes-count \"', variables('machineCount'), '\" --peer-nodes-index \"', copyIndex(), '\" --peer-nodes-prefix \"', parameters('stackId'), '\" --cluster-name \"', variables('clusterName'), '\" --password-seeder \"', if(equals(copyIndex(), 0), 'yes', 'no'), '\" --snitch \"', '\"GossipingPropertyFileSnitch\"', '\" --peer-password-input \"', uniqueString(subscription().subscriptionId, ' ', resourceGroup().id, ' ', deployment().name, parameters('stackId'), variables('appId'), variables('appVersion'), parameters('adminPassword')), '\" --shared-unique-id-input \"', uniqueString(subscription().subscriptionId, ' ', resourceGroup().id, ' ', deployment().name, parameters('stackId'), variables('appId'), variables('appVersion'), parameters('adminPassword')), '\" --cloud-account-id \"', uniqueString(subscription().subscriptionId), '\" --peer-address \"', reference(concat(parameters('stackId'), variables('peerAddressIndex'), 'nic')).ipConfigurations[0].properties.privateIPAddress, '\" --instance-tier-map \"', variables('machineTierMap'), copyIndex(), '\"')]"
         }
       }
     }
   ],
   "outputs": {
     "fqdn": {
-      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName')), variables('networkResourcesAPIVersion')).dnsSettings.fqdn]",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName')), '2016-09-01').dnsSettings.fqdn]",
       "type": "string"
     }
   }
