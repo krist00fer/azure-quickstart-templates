@@ -1,7 +1,7 @@
 ﻿#!/bin/bash
 
-CLUSTER_NAME="nase"
-SEEDS=""
+CLUSTER_NAME=$1
+SEEDS=$2
 disk=sdc
 
 fdisk -l /dev/sdc || break
@@ -15,6 +15,7 @@ w
 EOF
 
 mkfs -t xfs /dev/sdc1
+mkdir /cassandra
 mkdir /cassandra/data
 mount /dev/sdc1 /cassandra/data
 echo "/dev/sdc1 $mountPoint xfs defaults,nofail 0 2" >> /etc/fstab
