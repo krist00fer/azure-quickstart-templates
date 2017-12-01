@@ -23,7 +23,7 @@ chmod go+w /cassandra/data
 
 echo "Update Packages"
 apt-get update
-apt-get -y upgrade
+# apt-get -y upgrade
 
 echo "Install JDK..."
 apt-get -y install default-jdk
