@@ -1,42 +1,64 @@
 ﻿#!/bin/bash
 
-install_dependencies()
-{
-	echo "Installing Java 1.8 (openjdk)"
-	yum -y install java-1.8.0-openjdk
-}
+CLUSTER_NAME="nase"
+SEEDS=""
+disk=sdc
 
-install_cassandra()
-{
-	echo "Adding YUM Repo for DataStax"
-	cd /etc/yum.repos.d/
-	touch datastax.repo
+fdisk -l /dev/sdc || break
+fdisk /dev/sdc << EOF
+n
+p
+1
 
-	echo '[datastax-ddc]' >> datastax.repo
-	echo 'name = DataStax Repo for Apache Cassandra' >> datastax.repo
-	echo 'baseurl = http://rpm.datastax.com/datastax-ddc/3.2' >> datastax.repo
-	echo 'enabled = 1' >> datastax.repo
-	echo 'gpgcheck = 0' >> datastax.repo
 
-	echo "Installing datastax-ddc"
-	yum -y -q install datastax-ddc
+w
+EOF
 
-	echo "Ensuring Cassandra starts on boot"
-	/sbin/chkconfig --add cassandra
-	/sbin/chkconfig cassandra on
+mkfs -t xfs /dev/sdc1
+mkdir /cassandra/data
+mount /dev/sdc1 /cassandra/data
+echo "/dev/sdc1 $mountPoint xfs defaults,nofail 0 2" >> /etc/fstab
+chmod go+w /cassandra/data
 
-	echo "Starting Cassandra"
-	systemctl start cassandra
-}
+echo "Update Packages"
+apt-get update
+apt-get -y upgrade
 
-ensure_system_updated()
-{
-	yum makecache fast
+echo "Install JDK..."
+apt-get -y install default-jdk
 
-	echo "Updating Operating System"
-	yum -y -q update
-}
+echo "Installed Java Version:"
+java -version
 
-install_dependencies
-install_cassandra
-ensure_system_updated
+echo "Add Cassandra 310 package..."
+echo "deb http://www.apache.org/dist/cassandra/debian 310x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
+
+echo "Add Repo Keys..."
+curl https://www.apache.org/dist/cassandra/KEYS | apt-key add -
+apt-key adv --keyserver pool.sks-keyservers.net --recv-key A278B781FE4B2BDA
+
+echo "Updating packgages..."
+apt-get update
+
+echo "Install cassandra..."
+apt-get -y install cassandra
+
+sed -i -e "s/cluster_name: 'Test Cluster'/cluster_name: '$CLUSTER_NAME'/g" /etc/cassandra/cassandra.yaml
+
+sed -i -e "s/- seeds: \"127.0.0.1\"/- seeds: \"$SEEDS\"/g" /etc/cassandra/cassandra.yaml
+
+sed -i -e "s/listen_address: localhost/#listen_address: localhost/g" /etc/cassandra/cassandra.yaml
+sed -i -e "s/# listen_interface: eth0/listen_interface: eth0/g" /etc/cassandra/cassandra.yaml
+
+sed -i -e "s#    - /var/lib/cassandra/data#    - /cassandra/data#g" /etc/cassandra/cassandra.yaml
+
+mkdir /mnt/cassandra/commitlog
+sed -i -e "s#commitlog_directory: /var/lib/cassandra/commitlog#commitlog_directory: /mnt/cassandra/commitlog#g" /etc/cassandra/cassandra.yaml
+
+echo "Enable Cassandra"
+systemctl enable cassandra.service
+
+echo "Start Cassandra..."
+systemctl start cassandra.service
+
+echo "!!!DONE!!!"
