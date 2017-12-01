@@ -53,8 +53,10 @@ sed -i -e "s/# listen_interface: eth0/listen_interface: eth0/g" /etc/cassandra/c
 
 sed -i -e "s#    - /var/lib/cassandra/data#    - /cassandra/data#g" /etc/cassandra/cassandra.yaml
 
-mkdir /mnt/cassandra/commitlog
+mkdir -p /mnt/cassandra/commitlog
 sed -i -e "s#commitlog_directory: /var/lib/cassandra/commitlog#commitlog_directory: /mnt/cassandra/commitlog#g" /etc/cassandra/cassandra.yaml
+
+chown -R cassandra:cassandra /mnt/cassandra/
 
 echo "Enable Cassandra"
 systemctl enable cassandra.service
